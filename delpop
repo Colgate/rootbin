@@ -1,0 +1,25 @@
+#!/bin/bash
+
+regex="^[a-z0-9!#\$%&'*+/=?^_\`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_\`{|}~-]+)*@([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?\$"
+
+# Check if a email was passed to our script
+if [[ -z $1 ]] || [[ ! $1 =~ $regex ]]; then
+        echo "Please provide an email to delete."
+        exit
+fi
+
+DOM=$(cut -d@ -f2 <<< $1)
+USER=$(cut -d@ -f2 <<< $1)
+
+echo -e "Removing emails from configs"
+sed -i.back-$(date +%s) "/$1/d" /etc/vmail/vmailbox
+sed -i.back-$(date +%s) "/$1/d" /etc/vmail/mailusers
+
+echo -e "Reloading services"
+/etc/init.d/postfix reload; postmap /etc/vmail/vmailbox; postmap /etc/vmail/vmailaliases
+/etc/init.d/dovecot reload
+
+echo -e "Removing mail directory, please wait..."
+rm -rf /home/vmail/mail/${DOM}/${USER}
+
+echo -e "Done"

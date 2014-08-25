@@ -1,0 +1,1 @@
+forever start -l /var/log/banhammer.log -a -c bash /root/bin/scripts/banhammer.sh

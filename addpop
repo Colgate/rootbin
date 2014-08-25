@@ -1,0 +1,49 @@
+#!/bin/bash
+
+#############################################################
+# name:            addpop                                   # 
+# author:          Colgate                                  #
+# original author: pmarcotte                                #
+# description: dovecot/postfix user creation script         #
+#############################################################  
+
+
+#### Da Magicks ####
+
+regex="^[a-z0-9!#\$%&'*+/=?^_\`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_\`{|}~-]+)*@([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?\$"
+
+[[ -z $1 ]] || [[ ! $1 =~ $regex ]] && { echo "Please provide a valid email address to add."; exit 1; } || {
+
+    # Let's grab our user information
+    domain=$(cut -d@ -f2 <<< $1)
+    username=$(cut -d@ -f1 <<< $1)
+
+    # Verify we're not adding the same user twice. [Rewrite to allow for more than one user as long as the domain is different.]
+
+    grep -q "$1" /etc/vmail/vmailbox && grep -q "$1" /etc/vmail/mailusers && { echo "$1 already exists on this system."; exit 1; } || {
+        
+        # Check to see if a password was given. If not, make one up.
+        [[ ! -z $2 ]] && PLAINPASS="$2" || PLAINPASS=$(< /dev/urandom tr -dc _#@$A-Z-a-z-0-9 | head -c15)
+        ENCPASS=$(doveadm pw -s SHA512-CRYPT -p ${PLAINPASS})
+
+        # Create our entries for /etc/vmail/vmailbox and /etc/vmail/mailusers
+        VMAILBOX="$1 ${domain}/${username}/"
+        HASH="$1:${ENCPASS}:501:501::/home/vmail:::"
+
+        # Verify with our user that everything looks correct.
+        echo -e "\n\nThe following values will be used to create the new mailbox.  Are they correct?\n\nVirtual Mailbox:\t${VMAILBOX}\nDovecot Hash:\t\t${HASH}\n\n"
+        read -p "[y/n] " -n 1 -r; echo -e "\n\n";
+
+        [[ $REPLY =~ ^[Yy]$ ]] && {
+            echo -e "Adding virtual user to PostFix and Dovecot configuration."
+            echo "${VMAILBOX}" >> /etc/vmail/vmailbox # Add the user to postfix mailbox
+            echo "${HASH}" >> /etc/vmail/mailusers # Add the user to dovecot
+            echo -e "Updating PostFix virtual database."; postmap /etc/vmail/vmailbox; postmap /etc/vmail/vmailaliases;
+            echo -e "Reloading services..."; /etc/init.d/dovecot reload; /etc/init.d/postfix reload;
+
+            [[ ! -d /home/vmail/mail/${domain}/${username} ]] && { sudo -u vmail mkdir -p /home/vmail/mail/${domain}/${username}; chmod 0700 /home/vmail/mail/${domain}/${username}; }
+
+            echo -e "\n\nUsername:\t$1\nPassword:\t$PLAINPASS"
+        } || { echo "Not proceeding!"; exit 1; }
+    }
+}

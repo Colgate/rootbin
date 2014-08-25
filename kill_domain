@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# ============================================================
+# 
+# kill_domain
+# Remove a domain from the configuration on s5
+#
+# Created by ~Colgate
+#
+# ============================================================
+
+#todo: getopts + optionally create ftp user
+
+#### Some subroutines ####
+
+checkExists() {
+
+curl --silent -I --resolve "$domain":80:`hostname -i` http://"$domain"/ &> /dev/null && [[ -e /etc/nginx/conf.d/"$domain".conf ]] && return 0 || [[ -e /etc/nginx/conf.d/"$domain".conf ]] && return 0 ||  return 1;
+
+}
+
+
+#### Da Magicks ####
+
+domain=$1;
+docroot=`cut -d. -f1 <<< $1`
+echo -e "\nkill_domain.sh : nginx configuration delete script\n\n\tVerifying domain exists on server."
+! checkExists && { echo -e "\n\t$domain is not on this server. Nothing to do."; exit 1; } || {
+    echo -e "\tDomain exists.. Proceeding.";
+    [[ ! -z $2 && $2 == "--delete" ]] && {
+        echo -e "\tAre you sure you want to delete the files? This is NOT reversible.\n";
+        read -p "        [y/n] " -n 1 -r
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "\n\n\tOK. Deleting document root."
+            rm -fr /home/$docroot/;
+        fi
+    }
+    echo -e "\tRemoving nginx vhost";
+    rm -f /etc/nginx/conf.d/$domain.conf
+    echo -e "\tRemoving log directory";
+    rm -rf /var/log/nginx/sites/$domain
+    echo -e "\tRestarting nginx"
+    /etc/init.d/nginx restart 1> /dev/null
+    [[ $? -gt 0 ]] && echo -e "\n\tError restarting nginx. Please manually confirm." || echo -e "\nDone."
+}

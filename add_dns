@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# ============================================================
+# 
+# add_dns
+# Create necessary zone files and configure.
+#
+# Required arguments: domain.tld ip.add.re.ss
+#
+# Created by ~Colgate
+#
+# ============================================================
+
+#### Some subroutines ####
+
+checkNameservers() {
+
+    [[ $(dig +short NS $@ | tail -n 1 | cut -d. -f2) == "colgateminuette" ]] && return 0 || return 1
+
+}
+
+checkNamed() {
+    
+    [[ -e /var/named/$@.db ]] && [[ -e /etc/named/$@.zone ]] && return 0 || return 1
+    
+}
+
+checkIP() {
+
+    octet="(25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])"; ip4="^$octet\.$octet\.$octet\.$octet$";
+    [[ "$@" =~ $ip4 ]] && return 0 || return 1;
+
+}
+
+
+#### Da Magicks ####
+
+soa=$(/bin/date +%Y%m%d%S)
+
+! checkIP $2 && echo "$2 is not a valid IP address" || {
+    checkNamed $1 && { echo "$1 is already configured on this server. Nothing to do."; exit; } || {
+        [[ $3 != "--force" ]] && ! checkNameservers $1 && {
+             echo -e "\n$1 does not have the correct nameservers configured (ns1/2.colgateminuette.org). If this is intentional, please use --force"; exit;
+        } || { 
+            echo -e "\n\tPassed checks. Adding zone file for $1; primary address: $2\n\tCreating basic zone file"
+            echo -e "\$TTL 86400\n@\tIN\tSOA\tns1.colgateminuette.org.\tcolgate.colgateminuette.org. (\n\t$soa\t;Serial\n\t3600\t\t;Refresh\n\t1800\t\t;Retry\n\t604800\t\t;Expire\n\t86400\t\t;Minimum TTL\n)\n$1.\tIN\tNS\tns1.colgateminuette.org.\n$1.\tIN\tNS\tns2.colgateminuette.org.\n\n$1.\tIN\tA\t$2\nwww\tIN\tCNAME\t$1." > /var/named/$1.db
+            echo -e "\tAdding zone record to named.conf"
+            echo -e "zone ""$1"" IN {\n\ttype master;\n\tfile "\"$1.db\"";\n\tallow-update { none; };\n};" > /etc/named/$1.zone
+            echo "include \"/etc/named/$1.zone\";" >> /etc/named.conf
+            rndc reload &>/dev/null && echo -e "\nDone. Site should begin resolving shortly." || echo -e "\nrndc reload failed. Please verify everything was set up correctly."
+        }
+    }
+}

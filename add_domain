@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# ============================================================
+# 
+# add_domain
+# Create necessary configuration for new domains added to s5
+#
+# Created by ~Colgate
+#
+# ============================================================
+
+#todo: getopts + optionally create ftp user
+
+#### Some subroutines ####
+
+checkExists() {
+
+curl --silent -I --resolve "$domain":80:`hostname -i` http://"$domain"/ &> /dev/null && [[ -e /etc/nginx/conf.d/"$domain".conf ]] && return 0 || [[ -e /etc/nginx/conf.d/"$domain".conf ]] && return 0 ||  return 1;
+
+}
+
+createVhost() {
+
+echo -e "server {\n\tlisten 80;\n\tserver_name $domain www.$domain;\n\n\troot\t/home/$docroot/public_html;\n\tindex\tindex.php index.html;\n\tautoindex on;\n\n\tlocation /robots.txt { access_log off; log_not_found off; }\n\tlocation /favicon.ico { access_log off; log_not_found off; }\n\n\t## Deny all access to .htaccess files in nginx\n\tlocation ~ /\.ht {\n\t\tdeny all;\n\t}\n\n\tlocation / {\n\t\tinclude global/maintcheck.conf;\n\t\ttry_files \$uri \$uri/ /index.html\$is_args\$args;\n\t}\n\n\taccess_log /var/log/nginx/sites/$domain/access.log;\n\terror_log /var/log/nginx/sites/$domain/error.log;\n\n\t## Pass PHP to FPM\n\tlocation ~* \.php$ {\n\t\tinclude fastcgi_params;\n\t\tfastcgi_param SCRIPT_FILENAME \$request_filename;\n\t\tfastcgi_buffers 16 4k;\n\t\tfastcgi_pass unix:/var/www/php-fpm.sock;\n\t}\n}" > /etc/nginx/conf.d/$domain.conf
+
+}
+
+createDirectories() {
+
+[[ -d /home/$docroot ]] && echo -e '\tDocument root already exists. Skipping!' || mkdir -p /home/$docroot/public_html;
+[[ -d /var/log/nginx/sites/$domain ]] && echo -e '\tLog Directory already exists. Skipping!' || mkdir -p /var/log/nginx/sites/$domain;
+
+}
+
+#### Da Magicks ####
+
+domain=$1;
+docroot=`cut -d. -f1 <<< $1`
+
+echo -e "\nadd_domain.sh : nginx configuration add script\n\n\tChecking if domain already exists on server."
+checkExists && { echo -e "\n\t$domain is already configured. Nothing to do."; exit 1; } || {
+    echo -e "\tDomain does not exist.. Proceeding.\n\tCreating necessary directories"
+    createDirectories;
+    echo -e "\tCreating nginx vhost"
+    createVhost;
+    echo -e "\tRestarting nginx"
+    /etc/init.d/nginx restart 1> /dev/null
+    [[ $? -gt 0 ]] && echo -e "\n\tError restarting nginx. Please manually confirm." || echo -e "\nDone."
+}
