@@ -1,3 +1,5 @@
+echo "[$(date "+%Y-%m-%d %H:%M:%S")] banhammer.sh started" >> /var/log/banhammer.log
+
 tail -f -n 1 /var/log/secure | while read line;
 do
     now=$(date "+%Y-%m-%d %H:%M:%S")
@@ -11,13 +13,13 @@ do
         
         ## Ban this bitch.
         [[ -z $(iptables-save | grep $IP) ]] && {
-            iptables -A INVALIDUSER -p tcp -s $IP -m comment --comment "Blocked on $(date +"%F at %R") for attempted login with username $username" -j REJECT --reject-with icmp-host-prohibited
+            iptables -A INVALIDUSER -s $IP -m comment --comment "Blocked on $(date +"%F at %R") for attempted login with username $username" -j REJECT --reject-with icmp-host-prohibited
             
             ## Kill their SSH session
             ps aux | grep sshd | grep unknown | awk '{print $2}' | while read p; do kill -9 $p; done;
             
             ## Log this bitch
-            echo "[$now] Blocking IP address $IP for attempt to log in with username $username"
+            echo "[$now] Blocking IP address $IP for attempt to log in with username $username" >> /var/log/banhammer.log
         }
         
     };
@@ -33,8 +35,8 @@ do
             ## If greater than/equal to 6 failures, ban this bitch ; else log this bitch
             [[ $count -ge 6 ]] && {
                 [[ -z $(iptables-save | grep $IP) ]] && {
-                    iptables -A BRUTE_DROP -p tcp -s $IP -m comment --comment "blocked on $(date +"%F at %R") for too many root authentication failures" -j REJECT --reject-with icmp-host-prohibited;
-                    echo "[$now] Blocking IP address $IP for too many failed root logins";
+                    iptables -A BRUTE_DROP -s $IP -m comment --comment "blocked on $(date +"%F at %R") for too many root authentication failures" -j REJECT --reject-with icmp-host-prohibited;
+                    echo "[$now] Blocking IP address $IP for too many failed root logins" >> /var/log/banhammer.log
                 }
             } || echo $IP >> /var/log/log_ip
         }
