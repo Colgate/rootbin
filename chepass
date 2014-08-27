@@ -1,0 +1,25 @@
+#!/bin/bash
+
+#############################################################
+# name:            chepass                                  # 
+# author:          Colgate                                  #
+# description: Email password change system                 #
+############################################################# 
+
+[[ -n $1 ]] && [[ -n $2 ]] && {
+    regex="^[a-z0-9!#\$%&'*+/=?^_\`{|}~-]+(\.[a-z0-9!#$%&'*+/=?^_\`{|}~-]+)*@([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?\$"
+    
+    [[ ! $1 =~ $regex ]] && { echo "Please provide a valid email address."; exit 1; } || {
+        
+        ! grep -q $1 /etc/vmail/mailusers && { echo "$1 does not exist on this system"; exit 1; } || {
+            echo "Changing password for $1 to $2";
+            NEWHASH=$(doveadm pw -s SHA512-CRYPT -p $2);
+            OLDHASH=$(grep $1 /etc/vmail/mailusers | cut -d: -f2);
+            cp /etc/vmail/mailusers /etc/vmail/backups/mailusers.$(date +"%s").bak
+            sed -i "s|$OLDHASH|$NEWHASH|" /etc/vmail/mailusers;
+            echo "Success!";
+        }  
+    }
+    
+    
+} || echo "2 arguments must be passed";
